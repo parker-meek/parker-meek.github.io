@@ -1,0 +1,283 @@
+---
+title: "Final Project"
+output: html_document
+---
+
+<h2>Introduction </h2>
+
+The NFL is a multibillion dollar industry. In today's game there has been a premium placed upon the passing game and while there has been plenty of research done on the growth of QBs the growth of WR's has not been as analyzed. With the premium placed on passing the amount pass catchers recieve has been constantly growing as well. As such we will determine whether or not one can predict who is under and over performing. By this I mean we will try to discover based on how many receptions a player has made in a season how many touch downs a player can be expected to make.  This will also help NFL teams determine how effective a particular player is and how effective they can expect them to be. This is also important to many fantasy football owners as those who exceed expectations consistently can help them win money as well.
+
+
+This is a tutorial on the data science pipeline. For this introduction we will be investegating how effective an NFL player has been in terms of turning their receptions into touchdowns. To do this we will be comparing the touchdown:rec ratio in a single season for each individual who has caught at least one reception since 2007.
+
+<h2>1. Gathering and Curating Data </h2>
+
+The first step is to gather together the data. For this part of the process we are accessing the stats provided by NFL.com at :http://www.nfl.com/stats/categorystats?tabSeq=0&statisticCategory=RECEIVING&conference=null&season=2017&seasonType=REG&d-447263-s=RECEIVING_YARDS&d-447263-o=2&d-447263-n=1 .
+For this we are accessing the html page provided and extracting the  the table from the page. To extract this data we are going to use the rvest, magrittr, and tidyverse libraries. After extracting the first pages table we move the url to the next page and also extracted the table from that as well. Once extracted one can then use rbind to append the newly found tables to the existing table.
+```{r}
+library(rvest)
+library(magrittr)
+library(tidyverse)
+
+x <- {1:10} 
+y <- {2007:2016}
+
+for(year in y){
+
+  for (var in x) {
+  url <-paste(paste(paste(paste("http://www.nfl.com/stats/categorystats?tabSeq=0&season=",year,sep=""),"&seasonType=REG&Submit=Go&experience=&archive=true&statisticCategory=RECEIVING&d-447263-p=",sep=""),var,sep=""),"&conference=null&qualified=false",sep="")
+      All_player_page <- read_html(url)%>% html_nodes("table")%>%.[1]
+ 
+     if(var==1 && year ==2007){
+   
+        all_table <- html_table(All_player_page, fill=TRUE) %>% as.data.frame()
+        all_table$year <- year
+
+   
+     }else{
+        tmp_tbl <-html_table(All_player_page, fill=TRUE) %>% as.data.frame()
+        tmp_tbl$year <- year
+         all_table <- rbind(all_table,tmp_tbl)
+   
+     }
+ 
+  }
+}
+
+
+ for (var in x) {
+    url <- paste(paste("http://www.nfl.com/stats/categorystats?tabSeq=0&season=2017&seasonType=REG&experience=&Submit=Go&archive=false&d-447263-p=",var,sep=""),"&statisticCategory=RECEIVING&conference=null&qualified=false",sep="")
+     All_player_page <- read_html(url)%>% html_nodes("table")%>%.[1]
+      tmp_tbl <-html_table(All_player_page, fill=TRUE) %>% as.data.frame()
+      tmp_tbl$year <- 2017
+         all_table <- rbind(all_table,tmp_tbl)
+ }
+
+head(all_table,10)
+```
+
+we now have a table with all players who recieved a pass from the year 2007 through the 2017 season. This table has over 5,000 different observations that are organized by year and then by total number of receptions. 
+
+The next step is that we are going to separate the table removing any player whos official position is not Tight end or wide receiver entirely and creating two separate tables one for the wide recievers and one for Tight Ends as well as one for running backs. To do this we will use the filter command. the filter command takes a data frame and a condition. We are also breaking down the differential by year to see how those break down. 
+```{r}
+all_table <- filter(all_table,Rec > 1)
+  all_table$effective <- all_table$TD/all_table$Rec
+  all_table$position<-0
+  all_table$position[all_table$Pos =="WR"] <- 1
+  all_table$position[all_table$Pos=="TE"] <- 2
+  all_table$position[all_table$Pos=="RB"] <- 3
+wide_receiver_table <- filter(all_table, Pos== "WR",Rec > 1)
+
+tight_end_table <- filter(all_table, Pos == "TE", Rec > 1)
+
+running_back_table <-filter(all_table, Pos=="RB", Rec >1)
+
+
+table2007 <- filter(all_table, year == 2007)
+
+table2008 <- filter(all_table, year == 2008)
+
+table2009 <- filter(all_table, year == 2009)
+table2010 <- filter(all_table, year == 2010)
+table2011 <- filter(all_table, year == 2011)
+table2012 <- filter(all_table, year == 2012)
+table2013 <- filter(all_table, year == 2013)
+table2014 <- filter(all_table, year == 2014)
+table2015 <- filter(all_table, year == 2015)
+table2016 <- filter(all_table, year == 2016)
+table2017 <- filter(all_table, year == 2017)
+
+
+
+```
+
+We also know that we will no longer be needing some of the columns such as team or Season long so I removed those columns from the data set using select. This allows the data that we want to be more accessible.
+
+```{r}
+all_table<- select(all_table,-Team, -Lng)
+
+wide_receiver_table <- select(wide_receiver_table, -Team, -Lng)
+
+tight_end_table<-select(tight_end_table,-Team, -Lng)
+
+running_back_table<- select(running_back_table,-Team, -Lng)
+```
+
+<h2> 2. Exploratory Analysis </h2>
+
+Exploratory ANalysis means looking at our data and getting a general feel for how it looks and starting to understand some of the trends. We do this by looking at simply graphs of the data as well as looking at some of the statistical tendencies of the data. 
+
+
+After curating the table we will look at how the data looks in general and then break it down by year and by position.
+
+```{r exploratory Analysis}
+all_table %>%
+ggplot(aes(x= Rec, y= TD))+geom_point()+geom_smooth(method = lm)
+
+```
+
+This shows that as a player has more receptions they will score more touchdowns. Which makes sense. However we can then inspect it upon a year by year basis and see how the slopes change each year. 
+
+```{r}
+
+table2007%>%
+ggplot(aes(x=Rec,y=TD))+geom_point() +geom_smooth(method= lm)
+
+table2008%>%
+ggplot(aes(x=Rec,y=TD))+geom_point() +geom_smooth(method= lm)
+
+table2009%>%
+ggplot(aes(x=Rec,y=TD))+geom_point() +geom_smooth(method= lm)
+
+table2010%>%
+ggplot(aes(x=Rec,y=TD))+geom_point() +geom_smooth(method= lm)
+
+table2011%>%
+ggplot(aes(x=Rec,y=TD))+geom_point() +geom_smooth(method= lm)
+
+table2012%>%
+ggplot(aes(x=Rec,y=TD))+geom_point() +geom_smooth(method= lm)
+table2013%>%
+ggplot(aes(x=Rec,y=TD))+geom_point() +geom_smooth(method= lm)
+table2014%>%
+ggplot(aes(x=Rec,y=TD))+geom_point() +geom_smooth(method= lm)
+table2015%>%
+ggplot(aes(x=Rec,y=TD))+geom_point() +geom_smooth(method= lm)
+table2016%>%
+ggplot(aes(x=Rec,y=TD))+geom_point() +geom_smooth(method= lm)
+table2017%>%
+ggplot(aes(x=Rec,y=TD))+geom_point() +geom_smooth(method= lm)
+
+```
+
+Another way of looking at the reception to touchdown ratio is to consider the position one is playing. The main three positions who recieve passes are tight-end, wide-reciever and runningback.
+
+```{r}
+  running_back_table%>%
+ggplot(aes(x=Rec,y=TD))+geom_point() +geom_smooth(method= lm)
+  tight_end_table%>%
+ggplot(aes(x=Rec,y=TD))+geom_point() +geom_smooth(method= lm)
+  
+  wide_receiver_table%>%
+  ggplot(aes(x=Rec,y=TD))+geom_point() +geom_smooth(method= lm)
+
+```
+
+Other important things to look at when trying to understand the data are things such as mean for both the total number of receptions. 
+
+```{r}
+  mean(all_table$Rec)
+  mean(all_table$TD)
+  
+  
+  
+```
+
+
+
+
+<h2> 3. Machine Learning </h2>
+
+  Machine learning is using data we already have in order to look ahead and try to predict the future. We are going to use machine learning today to see if we can predict how many touchdowns a player has scored based off of the number of receptions they have.
+
+```{r}
+library(broom)
+interaction <- tidy(lm(formula = TD ~ Rec, data = all_table ))
+
+interaction
+```
+
+After taking an original slope using all of the potential data we can also see how each position can have their own slope meaning that the rate is slightly different for each individual.
+
+```{r}
+interaction_Wr <- tidy(lm(formula = TD~Rec,data = wide_receiver_table))
+
+interaction_te <- tidy(lm(formula = TD~Rec, data = tight_end_table))
+
+interaction_rb <- tidy(lm(formula = TD~Rec,data = running_back_table))
+
+interaction_Wr
+interaction_te
+interaction_rb
+```
+Another way of looking at the data is to look at it on a yearly basis. We can take a look at each year and see how the data in that year looks.
+
+```{r}
+interaction_2007 <- tidy(lm(formula = TD~Rec,data = table2007))
+
+interaction_2008 <- tidy(lm(formula = TD~Rec, data = table2008))
+
+interaction_2009 <- tidy(lm(formula = TD~Rec,data = table2009))
+interaction_2010 <- tidy(lm(formula = TD~Rec,data = table2010))
+
+interaction_2011 <- tidy(lm(formula = TD~Rec, data = table2011))
+
+interaction_2012 <- tidy(lm(formula = TD~Rec,data = table2012))
+
+interaction_2013 <- tidy(lm(formula = TD~Rec,data = table2013))
+
+interaction_2014 <- tidy(lm(formula = TD~Rec, data = table2014))
+
+interaction_2015 <- tidy(lm(formula = TD~Rec,data = table2015))
+interaction_2016 <- tidy(lm(formula = TD~Rec,data = table2016))
+
+interaction_2017 <- tidy(lm(formula = TD~Rec, data = table2017))
+
+interaction_2007 
+
+interaction_2008 
+
+interaction_2009 
+interaction_2010 
+
+interaction_2011 
+interaction_2012 
+interaction_2013 
+interaction_2014 
+interaction_2015 
+interaction_2016
+interaction_2017
+
+```
+
+Finally we can try and compound some of these factors. This formula below tests year as well as Position in their efforts
+```{r}
+interaction <- tidy(lm(formula = TD ~ Rec*Pos*year, data=all_table))
+interaction
+
+```
+
+Another way of attempting to create something to predict how many tocudowns a person would score would be to use a tree. When using a tree one can follow how many receptions a person has and if it is more than the number provided travel right and if it is less travel left and see how many Touchdowns a pass catcher should score. 
+
+```{r}
+library(tree)
+train <- sample(1:nrow(all_table),nrow(all_table)/2)
+tree.rec <- tree(TD~.,all_table%>%select(Rec,Pos,TD))
+summary(tree.rec)
+plot(tree.rec)
+text(tree.rec,pretty=0)
+```
+Things that can be taken away from this tree are that the tree has 5 leaves and that the deviance which is sum of squared errors is 2.83. What this means is that when squaring the result minus the actual over every test case and then squaring it followed by summing it together we are a total of 2.83 touchdowns off our entire data set. Considering the number of examples we have I believe that this is a a fairly good heuristic to fit over the entire pass catching NFL.
+
+
+
+
+
+
+<h2>Conclusion</h2>
+
+  In conclusion the position of a player was not as important as the year in which they played as each season affected a players effectiveness. However through the research I was able to find both a linear regression model and a tree model that would be useful in determing a single pass catchers effectiveness. This is useful not just for NFL front offices but also the millions who play fantasy football as they can now get a leg up on their competition.
+
+
+
+<h2> Links I used:</h2>
+
+These are some links that can help your understanding if you are confused about any of the topics I talked about.
+
+Data Manipulation: https://cyberhelp.sesync.org/data-manipulation-in-R-lesson/2016/07/26/ 
+
+Trees: http://rstudio-pubs-static.s3.amazonaws.com/156481_80ee6ee3a0414fd38f5d3ad33d14c771.html
+
+Linear Regression: http://r-statistics.co/Linear-Regression.html
+
+Plotting: https://www.statmethods.net/advgraphs/ggplot2.html
